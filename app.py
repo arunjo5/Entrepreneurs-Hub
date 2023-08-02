@@ -43,7 +43,7 @@ col2.image(background, width=500)
 
 selected_page = option_menu(
     menu_title=None,
-    options=["BizMatch", "BizBot", "Idea Oasis"],
+    options=["BizMatch", "BizBot", "Idea Oasis", "Stock Sense"],
     icons=["map", "person-circle", "info", "geo"],
     menu_icon="cast",
     default_index=0,
@@ -191,3 +191,81 @@ if selected_page == "Idea Oasis":
     if st.button("Get Competitors"):
         competitors = get_competition(competition_idea)
         st.markdown(f"### Potential Competitors\n{competitors}")
+
+elif selected_page == "Stock Sense":
+    TODAY = dt.datetime.now()
+    START = dt.datetime(TODAY.year - 10, TODAY.month, TODAY.day)
+
+    st.header("Stock Analysis & Prediction")
+
+    stock_choice = st.text_input("Choose a stock")
+    st.write("The stock you chose is ", stock_choice)
+
+    #This function generates the plot graph for the stock's value in the past
+    def plot_generate_data():
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(x=data['Date'], y=data['Open'], name='opening_stock_value'))
+        fig.add_trace(
+            go.Scatter(x=data['Date'], y=data['Close'],
+                    name='closing_stock_value'))
+        fig.layout.update(title_text="History of Stock",
+                        xaxis_rangeslider_visible=True)
+        st.plotly_chart(fig)
+
+
+    #This saves the searches already made in cache 
+    @st.cache_data
+
+    def generate_data(stock):
+        data = yf.download(stock, START, TODAY)
+        data.reset_index(inplace=True)
+        return data
+
+
+    data_loading = st.text("Loading....")
+    parsed = True
+    if stock_choice != "":
+        data = generate_data(stock_choice)
+        data_loading.text("....done!")
+
+        st.subheader("Stock History")
+        st.write(data.tail())
+        plot_generate_data()
+
+        # Predictions
+        t_days = st.slider("Days of prediction:", 1, 365)
+
+        model = Prophet()
+        data = data.reset_index()
+        data[["ds", "y"]] = data[["Date", "Adj Close"]]
+        #This code will only continue if the inputted stock was a valid stock inside the yahoo finance database
+        try:
+            prediction_loading = st.text("Loading....")
+            model.fit(data)
+            #Calculates the future values of the stock
+            future = model.make_future_dataframe(periods=t_days)
+            prediction = model.predict(future)
+            model.plot(prediction)
+
+            #plots the prediction
+            st.write(prediction.tail())
+
+            st.write("Predicted Data")
+            pred1 = plot_plotly(model, prediction)
+            st.plotly_chart(pred1)
+
+            # This creates a vareity of graphs that represent dfferent types of predictions relative to the stock
+            st.write("Prediction Components")
+            pred2 = model.plot_components(prediction)
+            st.write(pred2)
+
+            today_value = int(data['High'][2150])
+            prediction_value = int(prediction['yhat_upper'][2150])
+            difference = prediction_value - today_value
+            percentage = round((difference / today_value) * 100, 1)
+            st.write("The difference between the predicted value and today's value is " + str(difference))
+            st.write("There is a percentage difference of " + str(percentage) + "%")
+            prediction_loading.text("....done!")
+        except ValueError:
+            st.write("INVALID INPUT!")
